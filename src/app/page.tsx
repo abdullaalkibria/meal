@@ -1,0 +1,2 @@
+import Link from 'next/link';
+export default function Home(){return <main className="page"><div className="card" style={{maxWidth:760,margin:'60px auto',textAlign:'center'}}><h1>Mess Meal Management System</h1><p className="muted">Dark modern dashboard for meals, bazar, bills, payable and receivable.</p><div className="nav" style={{justifyContent:'center'}}><Link className="btn" href="/login">Login</Link><Link className="btn2" href="/register">Register</Link></div></div></main>}
