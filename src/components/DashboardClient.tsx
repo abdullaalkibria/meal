@@ -97,16 +97,25 @@ export default function DashboardClient() {
 }, [month]);
 
   async function setMeal(type: 'lunch' | 'dinner', count: number) {
-    const r = await fetch('/api/meal/toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mealType: type, count }),
-    });
+  const r = await fetch('/api/meal/toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mealType: type, count }),
+  });
 
-    const j = await r.json();
-    if (!r.ok) alert(j.error);
-    await load();
+  const j = await r.json();
+
+  if (!r.ok) {
+    alert(j.error);
+    return;
   }
+
+  if (j.message) {
+    alert(j.message);
+  }
+
+  await load();
+}
 
   async function submitBazar(e: any) {
     e.preventDefault();
