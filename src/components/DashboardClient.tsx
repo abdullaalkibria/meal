@@ -1,7 +1,9 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 
 type Data = any;
+type MealType = 'lunch' | 'dinner';
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -40,13 +42,111 @@ function getDaysInMonth(month: string) {
   return new Date(year, monthNo, 0).getDate();
 }
 
-function getUserDayMeal(data: any, phone: string, date: string) {
-  const rows = [
+function dhakaNow() {
+  return new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' })
+  );
+}
+
+function formatDate(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function addDays(date: Date, days: number) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function timeToMinutes(time: string | undefined, fallback: string) {
+  const safe = time || fallback;
+  const [h, m] = safe.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function getMealEditInfo(mealType: MealType, settings: any) {
+  const now = dhakaNow();
+  const today = formatDate(now);
+  const tomorrow = formatDate(addDays(now, 1));
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  if (mealType === 'lunch') {
+    const start = timeToMinutes(settings?.lunchLockStart, '10:00');
+    const end = timeToMinutes(settings?.lunchLockEnd, '13:00');
+
+    if (currentMinutes >= start && currentMinutes < end) {
+      return {
+        locked: true,
+        targetDate: today,
+        label: 'Lunch editing locked',
+        help: `Lunch is locked from ${settings?.lunchLockStart || '10:00'} to ${
+          settings?.lunchLockEnd || '13:00'
+        }. Today's lunch is already counted.`,
+      };
+    }
+
+    if (currentMinutes >= end) {
+      return {
+        locked: false,
+        targetDate: tomorrow,
+        label: `Tomorrow lunch plan (${tomorrow})`,
+        help: `Today's lunch is already counted. Lunch changes now apply to tomorrow.`,
+      };
+    }
+
+    return {
+      locked: false,
+      targetDate: today,
+      label: `Today lunch plan (${today})`,
+      help: `Lunch changes now apply to today.`,
+    };
+  }
+
+  const start = timeToMinutes(settings?.dinnerLockStart, '18:00');
+  const end = timeToMinutes(settings?.dinnerLockEnd, '21:00');
+
+  if (currentMinutes >= start && currentMinutes < end) {
+    return {
+      locked: true,
+      targetDate: today,
+      label: 'Dinner editing locked',
+      help: `Dinner is locked from ${settings?.dinnerLockStart || '18:00'} to ${
+        settings?.dinnerLockEnd || '21:00'
+      }. Today's dinner is already counted.`,
+    };
+  }
+
+  if (currentMinutes >= end) {
+    return {
+      locked: false,
+      targetDate: tomorrow,
+      label: `Tomorrow dinner plan (${tomorrow})`,
+      help: `Today's dinner is already counted. Dinner changes now apply to tomorrow.`,
+    };
+  }
+
+  return {
+    locked: false,
+    targetDate: today,
+    label: `Today dinner plan (${today})`,
+    help: `Dinner changes now apply to today.`,
+  };
+}
+
+function getAllMealRows(data: any) {
+  return [
     ...(data.meals || []),
     ...(data.monthMeals || []),
     ...(data.mealRows || []),
     ...(data.allMeals || []),
   ];
+}
+
+function getUserDayMeal(data: any, phone: string, date: string) {
+  const rows = getAllMealRows(data);
 
   const found = rows.find(
     (m: any) =>
@@ -71,6 +171,37 @@ function getUserDayMeal(data: any, phone: string, date: string) {
   return 0;
 }
 
+function getUserMealCountForDate(
+  data: any,
+  phone: string,
+  date: string,
+  mealType: MealType
+) {
+  const rows = getAllMealRows(data);
+
+  const found = rows.find(
+    (m: any) =>
+      String(m.phone || '').trim() === phone &&
+      String(m.date || '').trim() === date
+  );
+
+  if (found) {
+    return Number(found[mealType] || 0);
+  }
+
+  if (String(data.today || '').trim() === date) {
+    const todayFound = (data.todayMeals || []).find(
+      (m: any) => String(m.phone || '').trim() === phone
+    );
+
+    if (todayFound) {
+      return Number(todayFound[mealType] || 0);
+    }
+  }
+
+  return 0;
+}
+
 export default function DashboardClient() {
   const [data, setData] = useState<Data | null>(null);
   const [err, setErr] = useState('');
@@ -84,6 +215,11 @@ export default function DashboardClient() {
     const j = await r.json();
 
     if (!r.ok) {
+      if (j.error === 'Unauthorized') {
+        location.href = '/login';
+        return;
+      }
+
       setErr(j.error);
       return;
     }
@@ -93,29 +229,29 @@ export default function DashboardClient() {
   }
 
   useEffect(() => {
-  load(month);
-}, [month]);
+    load(month);
+  }, [month]);
 
-  async function setMeal(type: 'lunch' | 'dinner', count: number) {
-  const r = await fetch('/api/meal/toggle', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mealType: type, count }),
-  });
+  async function setMeal(type: MealType, count: number) {
+    const r = await fetch('/api/meal/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mealType: type, count }),
+    });
 
-  const j = await r.json();
+    const j = await r.json();
 
-  if (!r.ok) {
-    alert(j.error);
-    return;
+    if (!r.ok) {
+      alert(j.error);
+      return;
+    }
+
+    if (j.message) {
+      alert(j.message);
+    }
+
+    await load();
   }
-
-  if (j.message) {
-    alert(j.message);
-  }
-
-  await load();
-}
 
   async function submitBazar(e: any) {
     e.preventDefault();
@@ -155,14 +291,26 @@ export default function DashboardClient() {
     );
   }
 
-  const me =
-    data.todayMeals.find((x: any) => x.phone === data.user.phone) || {
-      lunch: 0,
-      dinner: 0,
-    };
-
+  const userPhone = String(data.user.phone || '').trim();
   const daysInMonth = getDaysInMonth(month);
   const mealRate = Number(data.summary.mealRate || 0);
+
+  const lunchEdit = getMealEditInfo('lunch', data.settings);
+  const dinnerEdit = getMealEditInfo('dinner', data.settings);
+
+  const lunchCount = getUserMealCountForDate(
+    data,
+    userPhone,
+    lunchEdit.targetDate,
+    'lunch'
+  );
+
+  const dinnerCount = getUserMealCountForDate(
+    data,
+    userPhone,
+    dinnerEdit.targetDate,
+    'dinner'
+  );
 
   return (
     <main className="page">
@@ -175,25 +323,27 @@ export default function DashboardClient() {
         </div>
 
         <div className="nav">
-  {data.user.role === 'admin' && (
-    <a className="btn2" href="/admin">Admin Panel</a>
-  )}
+          {data.user.role === 'admin' && (
+            <a className="btn2" href="/admin">
+              Admin Panel
+            </a>
+          )}
 
-  <button className="btn2" onClick={() => load(month)}>
-    Refresh
-  </button>
+          <button className="btn2" onClick={() => load(month)}>
+            Refresh
+          </button>
 
-  <button
-    className="btn2"
-    onClick={() =>
-      fetch('/api/auth/logout', { method: 'POST' }).then(
-        () => (location.href = '/login')
-      )
-    }
-  >
-    Logout
-  </button>
-</div>
+          <button
+            className="btn2"
+            onClick={() =>
+              fetch('/api/auth/logout', { method: 'POST' }).then(
+                () => (location.href = '/login')
+              )
+            }
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
       <section className="card" style={{ marginBottom: 18 }}>
@@ -260,7 +410,7 @@ export default function DashboardClient() {
       <section className="card">
         <h2>Monthly Meal Calculation ({month})</h2>
         <p className="muted">
-          Day-wise meal count. Total TK = Total Meal × Meal Rate.
+          Day-wise consumed meal count. Total TK = Total Meal × Meal Rate.
         </p>
 
         <div style={{ overflowX: 'auto' }}>
@@ -325,42 +475,60 @@ export default function DashboardClient() {
         <div className="mealControls">
           <div>
             <b>Lunch</b>
-            <div className="counter">
-              <button
-                className="btn2"
-                onClick={() => setMeal('lunch', Math.max(0, Number(me.lunch) - 1))}
-              >
-                −
-              </button>
-              <span>{me.lunch}</span>
-              <button
-                className="btn2"
-                onClick={() => setMeal('lunch', Number(me.lunch) + 1)}
-              >
-                +
-              </button>
-            </div>
-          </div>
+            <p className="muted">{lunchEdit.label}</p>
 
-          <div>
-            <b>Dinner</b>
             <div className="counter">
               <button
                 className="btn2"
+                disabled={lunchEdit.locked}
                 onClick={() =>
-                  setMeal('dinner', Math.max(0, Number(me.dinner) - 1))
+                  setMeal('lunch', Math.max(0, Number(lunchCount) - 1))
                 }
               >
                 −
               </button>
-              <span>{me.dinner}</span>
+
+              <span>{lunchCount}</span>
+
               <button
                 className="btn2"
-                onClick={() => setMeal('dinner', Number(me.dinner) + 1)}
+                disabled={lunchEdit.locked}
+                onClick={() => setMeal('lunch', Number(lunchCount) + 1)}
               >
                 +
               </button>
             </div>
+
+            <p className="muted">{lunchEdit.help}</p>
+          </div>
+
+          <div>
+            <b>Dinner</b>
+            <p className="muted">{dinnerEdit.label}</p>
+
+            <div className="counter">
+              <button
+                className="btn2"
+                disabled={dinnerEdit.locked}
+                onClick={() =>
+                  setMeal('dinner', Math.max(0, Number(dinnerCount) - 1))
+                }
+              >
+                −
+              </button>
+
+              <span>{dinnerCount}</span>
+
+              <button
+                className="btn2"
+                disabled={dinnerEdit.locked}
+                onClick={() => setMeal('dinner', Number(dinnerCount) + 1)}
+              >
+                +
+              </button>
+            </div>
+
+            <p className="muted">{dinnerEdit.help}</p>
           </div>
         </div>
 
