@@ -93,10 +93,8 @@ export default function DashboardClient() {
   }
 
   useEffect(() => {
-    load(month);
-    const t = setInterval(() => load(month), 10000);
-    return () => clearInterval(t);
-  }, [month]);
+  load(month);
+}, [month]);
 
   async function setMeal(type: 'lunch' | 'dinner', count: number) {
     const r = await fetch('/api/meal/toggle', {
@@ -168,23 +166,25 @@ export default function DashboardClient() {
         </div>
 
         <div className="nav">
-          {data.user.role === 'admin' && (
-            <a className="btn2" href="/admin">
-              Admin Panel
-            </a>
-          )}
+  {data.user.role === 'admin' && (
+    <a className="btn2" href="/admin">Admin Panel</a>
+  )}
 
-          <button
-            className="btn2"
-            onClick={() =>
-              fetch('/api/auth/logout', { method: 'POST' }).then(
-                () => (location.href = '/login')
-              )
-            }
-          >
-            Logout
-          </button>
-        </div>
+  <button className="btn2" onClick={() => load(month)}>
+    Refresh
+  </button>
+
+  <button
+    className="btn2"
+    onClick={() =>
+      fetch('/api/auth/logout', { method: 'POST' }).then(
+        () => (location.href = '/login')
+      )
+    }
+  >
+    Logout
+  </button>
+</div>
       </div>
 
       <section className="card" style={{ marginBottom: 18 }}>
